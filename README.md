@@ -41,4 +41,4 @@ The API documentation for the project is available via Swagger UI. The Swagger U
 ### Swagger Documentation Screenshot:
 ![Swagger UI](https://github.com/Sivasanath06/CuisineCove/blob/main/Images/SCR-20250117-qobm.png)
 
-To access the Swagger UI locally, visit:
+To access the Swagger UI locally, visit:http://localhost:3000/api-docs
