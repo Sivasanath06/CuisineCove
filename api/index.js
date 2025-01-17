@@ -9,19 +9,21 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const Restaurant = require("./model/schema.js");
 const path = require("path");
 const fs = require("fs");
-
+const swaggerjsdoc = require("swagger-jsdoc");
+const swaggerui = require("swagger-ui-express");
 dotenv.config();
 const app = express();
 app.use(cors());
 
 app.use(express.json());
 
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 30000, // 30 seconds
-  socketTimeoutMS: 45000,         // 45 seconds
-})
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 30000, // 30 seconds
+    socketTimeoutMS: 45000, // 45 seconds
+  })
   .then(() => console.log("MongoDB connected..."))
   .catch((err) => console.error("MongoDB connection error:", err));
 
@@ -128,3 +130,25 @@ app.post("/api/getcuisine", upload.single("image"), async (req, res) => {
     res.status(500).send("An error occurred while processing your request.");
   }
 });
+const swaggerDefinition = {
+  openapi: "3.0.0",
+  info: {
+    title: "CuisineCove",
+    version: "1.0.0",
+    description: "Discover the best food, restaurants, and cuisines around you",
+  },
+  servers: [
+    {
+      url: "http://localhost:3000/",
+    },
+  ],
+};
+
+const options = {
+  swaggerDefinition, // Corrected: changed 'swaggerDefination' to 'swaggerDefinition'
+  apis: ["./routes/*.js"], // Ensure the path to your route files is correct
+};
+
+const specs = swaggerjsdoc(options);
+
+app.use("/api-docs", swaggerui.serve, swaggerui.setup(specs));

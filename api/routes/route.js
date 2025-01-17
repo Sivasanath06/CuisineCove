@@ -1,23 +1,69 @@
 const express = require("express");
 const Restaurant = require("../model/schema.js");
-const router = express.Router();
 const { getDistance } = require("geolib");
+const router = express.Router();
 
-// Get all restaurants with pagination
+/**
+ * @swagger
+ * tags:
+ *   name: Restaurants
+ *   description: Operations related to restaurants
+ */
+
+/**
+ * @swagger
+ * /api:
+ *   get:
+ *     summary: Get all restaurants with pagination
+ *     tags: [Restaurants]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *       - in: query
+ *         name: search
+ *         required: false
+ *         schema:
+ *           type: string
+ *           default: ""
+ *     responses:
+ *       200:
+ *         description: A list of restaurants
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 restaurants:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 totalPages:
+ *                   type: integer
+ *                 currentPage:
+ *                   type: integer
+ *       500:
+ *         description: Internal Server Error
+ */
 router.get("/", async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "" } = req.query;
-
-    // Build search query
     const searchQuery = search ? { name: new RegExp(search, "i") } : {};
 
-    // Fetch the data with pagination and search filter
     const restaurants = await Restaurant.find(searchQuery)
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit))
       .exec();
 
-    // Count total documents with search filter
     const count = await Restaurant.countDocuments(searchQuery);
 
     res.json({
@@ -29,22 +75,64 @@ router.get("/", async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-const haversineDistance = (lat1, lon1, lat2, lon2) => {
-  const toRad = (value) => (value * Math.PI) / 180;
 
-  const R = 6371; // Radius of the Earth in km
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
-
+/**
+ * @swagger
+ * /api/nearby-restaurants:
+ *   get:
+ *     summary: Get nearby restaurants within a specified range
+ *     tags: [Restaurants]
+ *     parameters:
+ *       - in: query
+ *         name: lat
+ *         required: true
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: lng
+ *         required: true
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: range
+ *         required: true
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 15
+ *     responses:
+ *       200:
+ *         description: A list of nearby restaurants
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalResults:
+ *                   type: integer
+ *                 totalPages:
+ *                   type: integer
+ *                 currentPage:
+ *                   type: integer
+ *                 restaurants:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       400:
+ *         description: Missing required parameters
+ *       500:
+ *         description: Server error
+ */
 router.get("/nearby-restaurants", async (req, res) => {
   const { lat, lng, range, page = 1, limit = 15 } = req.query;
 
@@ -61,7 +149,6 @@ router.get("/nearby-restaurants", async (req, res) => {
       return distance <= parseFloat(range);
     });
 
-    // Pagination
     const totalResults = nearbyRestaurants.length;
     const totalPages = Math.ceil(totalResults / limit);
     const startIndex = (page - 1) * limit;
@@ -79,49 +166,34 @@ router.get("/nearby-restaurants", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-router.delete("/delete-duplicates", async (req, res) => {
-  try {
-    // Step 1: Find all documents grouped by the unique field and get the duplicates
-    const duplicates = await Restaurant.aggregate([
-      {
-        $group: {
-          _id: "$name", // Replace "$name" with the field that should be unique
-          ids: { $push: "$_id" },
-          count: { $sum: 1 },
-        },
-      },
-      {
-        $match: {
-          count: { $gt: 1 }, // Find groups with more than one document
-        },
-      },
-    ]);
 
-    // Step 2: Delete duplicates, keeping the first instance
-    for (const duplicate of duplicates) {
-      // Keep the first document
-      const [firstId, ...otherIds] = duplicate.ids;
-      // Delete the rest
-      await Restaurant.deleteMany({ _id: { $in: otherIds } });
-    }
-
-    res.json({ message: "Duplicate documents removed successfully" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+/**
+ * @swagger
+ * /api/top-100:
+ *   get:
+ *     summary: Get the top 100 restaurants based on rating
+ *     tags: [Restaurants]
+ *     responses:
+ *       200:
+ *         description: A list of top 100 restaurants
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       500:
+ *         description: Server error
+ */
 router.get("/top-100", async (req, res) => {
   try {
-    // Find and sort restaurants by rating and city, then limit to the top 100
     const topRestaurants = await Restaurant.find()
       .sort({
-        "user_rating.aggregate_rating": -1, // Sort by aggregate_rating in descending order
-        // Sort by city in ascending order
+        "user_rating.aggregate_rating": -1,
       })
-      .limit(100) // Limit the result to top 100 restaurants
-      .allowDiskUse(true); // Enable external sorting to handle large datasets
+      .limit(100)
+      .allowDiskUse(true);
 
-    // Check if any restaurants were found
     if (topRestaurants.length === 0) {
       return res.status(404).json({ message: "No restaurants found" });
     }
@@ -131,6 +203,35 @@ router.get("/top-100", async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/top-30:
+ *   get:
+ *     summary: Get top 30 restaurants in a specified city
+ *     tags: [Restaurants]
+ *     parameters:
+ *       - in: query
+ *         name: city
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: A list of top 30 restaurants in the specified city
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       400:
+ *         description: Please provide a city name
+ *       404:
+ *         description: No restaurants found in the city
+ *       500:
+ *         description: Server error
+ */
 router.get("/top-30", async (req, res) => {
   const { city } = req.query;
 
@@ -139,13 +240,11 @@ router.get("/top-30", async (req, res) => {
   }
 
   try {
-    // Find restaurants in the specified city and sort by aggregate_rating in descending order
     const topRestaurants = await Restaurant.find({ "location.city": city })
-      .sort({ "user_rating.aggregate_rating": -1 }) // Sort by aggregate_rating in descending order
-      .limit(30) // Limit the result to top 30 restaurants
-      .allowDiskUse(true); // Enable external sorting if needed
+      .sort({ "user_rating.aggregate_rating": -1 })
+      .limit(30)
+      .allowDiskUse(true);
 
-    // Check if any restaurants were found
     if (topRestaurants.length === 0) {
       return res
         .status(404)
@@ -155,83 +254,6 @@ router.get("/top-30", async (req, res) => {
     res.json(topRestaurants);
   } catch (error) {
     res.status(500).json({ message: error.message });
-  }
-});
-// API route for filtering restaurants
-router.get('/filter', async (req, res) => {
-  try {
-      const { name, country, cuisines, minAvgCost, maxAvgCost, page = 1, limit = 5 } = req.query;
-
-      let query = {};
-
-      if (name) {
-          query.name = { $regex: new RegExp(name, 'i') };
-      }
-
-      if (country) {
-          query['location.country'] = { $regex: new RegExp(country, 'i') };
-      }
-
-      if (cuisines) {
-          query.cuisines = { $regex: new RegExp(cuisines, 'i') };
-      }
-
-      if (minAvgCost || maxAvgCost) {
-          query.average_cost_for_two = {};
-          if (minAvgCost) {
-              query.average_cost_for_two.$gte = parseInt(minAvgCost);
-          }
-          if (maxAvgCost) {
-              query.average_cost_for_two.$lte = parseInt(maxAvgCost);
-          }
-      }
-
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-
-      const restaurants = await Restaurant.find(query).skip(skip).limit(parseInt(limit));
-      const totalRestaurants = await Restaurant.countDocuments(query);
-      const totalPages = Math.ceil(totalRestaurants / parseInt(limit));
-
-      res.json({ restaurants, pages: totalPages, totalRestaurants });
-  } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: 'Server Error' });
-  }
-});
-router.get("/city", async (req, res) => {
-  const { city } = req.query;
-  const { page = 1, limit = 30 } = req.query;
-
-  if (!city) {
-    return res.status(400).json({ error: "Please provide a city name" });
-  }
-
-  try {
-    const restaurants = await Restaurant.find({ "location.city": city })
-      .limit(parseInt(limit))
-      .skip((page - 1) * limit)
-      .exec();
-    const count = await Restaurant.countDocuments({ "location.city": city });
-
-    res.json({
-      restaurants,
-      totalPages: Math.ceil(count / limit),
-      currentPage: page,
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Get restaurant by ID
-router.get("/:id", async (req, res) => {
-  try {
-    const restaurant = await Restaurant.findOne({ id: req.params.id });
-    if (!restaurant)
-      return res.status(404).json({ message: "Restaurant not found" });
-    res.json(restaurant);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
   }
 });
 
